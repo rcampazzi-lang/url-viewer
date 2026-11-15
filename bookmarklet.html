@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bookmarklet : télécharger le HTML</title>
+<style>
+body{font:16px -apple-system,system-ui,sans-serif;margin:0;padding:16px;line-height:1.45;color:#1c1e21}
+textarea{width:100%;height:120px;font:12px monospace;padding:8px;border:1px solid #c4c8cf;border-radius:8px}
+button{padding:12px 16px;font-size:16px;border:0;border-radius:10px;background:#2d5be3;color:#fff;margin:8px 0}
+li{margin-bottom:8px}
+</style></head><body>
+<h2>Télécharger le HTML de n'importe quelle page</h2>
+<p>Ce raccourci Safari s'exécute <b>sur la page elle-même</b> : pas de proxy, et ça marche aussi pour les sites qui s'affichent en JavaScript.</p>
+<ol>
+<li>Appuie sur <b>Copier le code</b>.</li>
+<li>Dans Safari, ouvre n'importe quelle page, appuie sur Partager puis <b>Ajouter un signet</b> (nom : « HTML »), et enregistre.</li>
+<li>Ouvre tes signets, appuie longuement sur « HTML », puis <b>Modifier</b>. Remplace l'adresse par le code copié (efface tout, puis colle) et enregistre.</li>
+<li>Sur la page à capturer : touche la barre d'adresse, ouvre les signets et appuie sur « HTML ». Un bouton bleu <b>⬇ HTML</b> apparaît : appuie dessus, puis « Enregistrer dans Fichiers ».</li>
+</ol>
+<button id="c">Copier le code</button>
+<textarea id="t" readonly></textarea>
+<script>
+var CODE = "javascript:(function(){var d=document;if(d.getElementById('__dl'))return;var b=d.createElement('button');b.id='__dl';b.textContent='\u2b07 HTML';b.style.cssText='position:fixed;z-index:2147483647;right:12px;bottom:100px;padding:14px 18px;font:600 17px system-ui;border:0;border-radius:12px;background:#2d5be3;color:#fff;box-shadow:0 2px 10px #0006';b.onclick=async function(){var c=d.documentElement.cloneNode(true);var x=c.querySelector('#__dl');if(x)x.remove();var h='<!DOCTYPE html>\\n'+c.outerHTML;var n=(location.hostname.replace(/^www\\./,'')+'_'+(d.title||'').replace(/[^\\w\\- ]+/g,'').trim().slice(0,40).replace(/\\s+/g,'-')).replace(/_$/,'')+'.html';var f=new File([h],n,{type:'text/html'});try{if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f]});return}}catch(e){if(e.name=='AbortError')return}try{await navigator.clipboard.writeText(h);b.textContent='Copi\u00e9 \u2713'}catch(e){var a=d.createElement('a');a.href=URL.createObjectURL(f);a.download=n;d.body.appendChild(a);a.click()}};d.body.appendChild(b)})();";
+var t = document.getElementById('t'); t.value = CODE;
+document.getElementById('c').onclick = function () {
+  t.focus(); t.select(); t.setSelectionRange(0, 99999);
+  try { navigator.clipboard.writeText(CODE).then(function(){ this.textContent='Copié ✓'; }.bind(this)); } catch (e) { document.execCommand('copy'); }
+  this.textContent = 'Copié ✓';
+};
+</script>
+</body></html>
