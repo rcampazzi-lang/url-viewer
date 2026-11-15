@@ -27,6 +27,7 @@
   <button id="fwd" disabled>→</button>
   <button id="reload">⟳</button>
   <span style="flex:1"></span>
+  <button id="px" title="Proxy perso">⚙</button>
   <button id="copy">Copier</button>
   <button id="dl" class="p">⬇ HTML</button>
 </div>
@@ -36,22 +37,42 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const frame = $('frame'), urlIn = $('url'), st = $('st');
-const PROXIES = [
-  (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
-  (u) => 'https://corsproxy.io/?url=' + encodeURIComponent(u),
+const enc = encodeURIComponent;
+const BUILTIN = [
+  { n: 'allorigins', f: (u) => 'https://api.allorigins.win/raw?url=' + enc(u) },
+  { n: 'allorigins-json', f: (u) => 'https://api.allorigins.win/get?url=' + enc(u), json: true },
+  { n: 'codetabs', f: (u) => 'https://api.codetabs.com/v1/proxy/?quest=' + u },
+  { n: 'cors.lol', f: (u) => 'https://api.cors.lol/?url=' + enc(u) },
+  { n: 'thingproxy', f: (u) => 'https://thingproxy.freeboard.io/fetch/' + u },
+  { n: 'yacdn', f: (u) => 'https://yacdn.org/proxy/' + u },
 ];
 let hist = [], idx = -1, cur = '', busy = false;
 
+function proxies() {
+  let custom = '';
+  try { custom = localStorage.getItem('proxy') || ''; } catch {}
+  const list = BUILTIN.slice();
+  if (custom) list.unshift({ n: 'perso', f: (u) => custom.replace('{url}', enc(u)) });
+  return list;
+}
+
 async function fetchHtml(u) {
-  let last;
-  for (const p of PROXIES) {
+  const errs = [];
+  for (const p of proxies()) {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 12000);
     try {
-      const r = await fetch(p(u));
+      st.textContent = 'Chargement… (' + p.n + ')';
+      const r = await fetch(p.f(u), { signal: ctl.signal });
       if (!r.ok) throw new Error('HTTP ' + r.status);
-      return await r.text();
-    } catch (e) { last = e; }
+      let txt = await r.text();
+      if (p.json) txt = JSON.parse(txt).contents || '';
+      if (txt.length < 50) throw new Error('vide');
+      clearTimeout(t);
+      return txt;
+    } catch (e) { clearTimeout(t); errs.push(p.n + ': ' + (e.name === 'AbortError' ? 'délai' : e.message)); }
   }
-  throw last || new Error('échec');
+  throw new Error(errs.join(' | '));
 }
 
 function prepare(html, url) {
@@ -137,6 +158,13 @@ $('dl').onclick = async () => {
   setTimeout(() => URL.revokeObjectURL(a.href), 3000);
 };
 
+$('px').onclick = () => {
+  let c = ''; try { c = localStorage.getItem('proxy') || ''; } catch {}
+  const v = prompt('Proxy perso (utiliser {url} pour l\'URL). Vide = aucun.', c);
+  if (v === null) return;
+  try { localStorage.setItem('proxy', v.trim()); } catch {}
+  st.textContent = v.trim() ? 'Proxy perso enregistré' : 'Proxy perso supprimé';
+};
 $('copy').onclick = async () => {
   const html = currentHtml();
   if (!html) return;
