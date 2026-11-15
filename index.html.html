@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Visionneuse HTML</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; font: 15px -apple-system, system-ui, sans-serif; background: #f4f5f7; color: #1c1e21; }
+  body { display: flex; flex-direction: column; height: 100dvh; padding-top: env(safe-area-inset-top); }
+  .bar { display: flex; gap: 6px; padding: 6px; background: #fff; border-bottom: 1px solid #d8dbe0; }
+  input { flex: 1; min-width: 0; padding: 10px; border: 1px solid #c4c8cf; border-radius: 8px; font-size: 16px; }
+  button { padding: 10px 12px; border: 1px solid #c4c8cf; border-radius: 8px; background: #fff; font-size: 16px; }
+  button:disabled { opacity: .35; }
+  button.p { background: #2d5be3; border-color: #2d5be3; color: #fff; }
+  #st { padding: 3px 10px; font-size: 12px; color: #666; background: #fff; border-bottom: 1px solid #e3e5e9; min-height: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  iframe { flex: 1; width: 100%; border: 0; background: #fff; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <input id="url" type="url" inputmode="url" autocapitalize="off" autocorrect="off" placeholder="Coller une URL">
+  <button id="go" class="p">OK</button>
+</div>
+<div class="bar">
+  <button id="back" disabled>←</button>
+  <button id="fwd" disabled>→</button>
+  <button id="reload">⟳</button>
+  <span style="flex:1"></span>
+  <button id="copy">Copier</button>
+  <button id="dl" class="p">⬇ HTML</button>
+</div>
+<div id="st">Colle une URL puis OK.</div>
+<iframe id="frame" sandbox="allow-same-origin" title="Page"></iframe>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const frame = $('frame'), urlIn = $('url'), st = $('st');
+const PROXIES = [
+  (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
+  (u) => 'https://corsproxy.io/?url=' + encodeURIComponent(u),
+];
+let hist = [], idx = -1, cur = '', busy = false;
+
+async function fetchHtml(u) {
+  let last;
+  for (const p of PROXIES) {
+    try {
+      const r = await fetch(p(u));
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return await r.text();
+    } catch (e) { last = e; }
+  }
+  throw last || new Error('échec');
+}
+
+function prepare(html, url) {
+  html = html
+    .replace(/<script\b[\s\S]*?<\/script\s*>/gi, '')
+    .replace(/<base\b[^>]*>/gi, '')
+    .replace(/<meta[^>]+http-equiv=["']?(content-security-policy|refresh)["']?[^>]*>/gi, '');
+  const base = '<base href="' + url.replace(/"/g, '&quot;') + '">';
+  if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (m) => m + base);
+  return base + html;
+}
+
+async function open(u, push = true) {
+  u = (u || '').trim();
+  if (!u || busy) return;
+  if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+  busy = true; st.textContent = 'Chargement…';
+  try {
+    const html = await fetchHtml(u);
+    cur = u; urlIn.value = u;
+    if (push) { hist = hist.slice(0, idx + 1); hist.push(u); idx = hist.length - 1; }
+    frame.srcdoc = prepare(html, u);
+  } catch (e) {
+    st.textContent = 'Erreur : ' + (e.message || e);
+  }
+  busy = false; nav();
+}
+
+function nav() { $('back').disabled = idx <= 0; $('fwd').disabled = idx >= hist.length - 1; }
+
+frame.addEventListener('load', () => {
+  const d = frame.contentDocument;
+  if (!d || !cur) return;
+  st.textContent = (d.title ? d.title + ' — ' : '') + cur;
+  d.addEventListener('click', (e) => {
+    const a = e.target.closest && e.target.closest('a[href]');
+    if (!a) return;
+    const h = a.getAttribute('href') || '';
+    e.preventDefault();
+    if (h.startsWith('#') || /^(javascript|mailto|tel|data):/i.test(h)) return;
+    open(a.href);
+  }, true);
+  d.addEventListener('submit', (e) => {
+    const f = e.target;
+    e.preventDefault();
+    if ((f.method || 'get').toLowerCase() !== 'get') return;
+    const u = new URL(f.getAttribute('action') || cur, cur);
+    new FormData(f).forEach((v, k) => { if (typeof v === 'string') u.searchParams.set(k, v); });
+    open(u.href);
+  }, true);
+});
+
+function currentHtml() {
+  const d = frame.contentDocument;
+  if (!d || !d.documentElement || !cur) return null;
+  return '<!DOCTYPE html>\n' + d.documentElement.outerHTML;
+}
+function fileName() {
+  let h = 'page'; try { h = new URL(cur).hostname.replace(/^www\./, ''); } catch {}
+  const t = (frame.contentDocument.title || '').replace(/[^\w\- ]+/g, '').trim().slice(0, 40).replace(/\s+/g, '-');
+  return h + (t ? '_' + t : '') + '.html';
+}
+
+$('go').onclick = () => open(urlIn.value);
+urlIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(urlIn.value); });
+$('back').onclick = () => { if (idx > 0) open(hist[--idx], false); };
+$('fwd').onclick = () => { if (idx < hist.length - 1) open(hist[++idx], false); };
+$('reload').onclick = () => open(cur, false);
+
+$('dl').onclick = async () => {
+  const html = currentHtml();
+  if (!html) { st.textContent = 'Aucune page à télécharger.'; return; }
+  const name = fileName();
+  const file = new File([html], name, { type: 'text/html' });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file] }); return;   // feuille de partage iOS : "Enregistrer dans Fichiers"
+    }
+  } catch (e) { if (e.name === 'AbortError') return; }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(file); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+};
+
+$('copy').onclick = async () => {
+  const html = currentHtml();
+  if (!html) return;
+  try { await navigator.clipboard.writeText(html); st.textContent = 'HTML copié (' + html.length + ' car.)'; }
+  catch { st.textContent = 'Copie refusée'; }
+};
+</script>
+</body>
+</html>
